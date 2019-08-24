@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 )
 
@@ -13,11 +14,31 @@ const (
 	boardHeight = 6
 
 	cellEmpty = 0
-	cellX     = 1
-	cellO     = 2
+	cellBlack = 1
+	cellWhite = -1
 )
 
-var cellNames = []rune(".XO")
+var randomBits = func() [][][]uint64 {
+	a := [][][]uint64{newUInt642D(boardWidth, boardHeight), newUInt642D(boardWidth, boardHeight)}
+	for c := 1; c >= 0; c-- {
+		for y := boardHeight - 1; y >= 0; y-- {
+			for x := boardWidth - 1; x >= 0; x-- {
+				a[c][y][x] = rand.Uint64()
+			}
+		}
+	}
+	return a
+}()
+
+func printRandomBits() {
+	for c := 1; c >= 0; c-- {
+		for y := boardHeight - 1; y >= 0; y-- {
+			for x := boardWidth - 1; x >= 0; x-- {
+				fmt.Printf("%d %d %d %d\n", c, y, x, randomBits[c][y][x])
+			}
+		}
+	}
+}
 
 var waysToWin = func() [][]int {
 	w := newInt2D(boardWidth, boardHeight)
@@ -56,8 +77,10 @@ func isValidCoordinate(x, y int) bool {
 }
 
 type node struct {
-	board   [][]int
-	heights []int
+	board     [][]int
+	ys        []int
+	hash      uint64
+	heuristic int
 }
 
 func (n *node) print() {
@@ -77,16 +100,31 @@ func convertBoardToString(board [][]int) string {
 		sb.WriteRune(rune('1' + y))
 		sb.WriteRune(' ')
 		for x := 0; x < boardWidth; x++ {
-			sb.WriteRune(cellNames[row[x]])
-			sb.WriteRune(' ')
+			switch row[x] {
+			case cellEmpty:
+				sb.WriteString(". ")
+			case cellBlack:
+				sb.WriteString("X ")
+			case cellWhite:
+				sb.WriteString("O ")
+			}
 		}
 		sb.WriteRune('\n')
 	}
 	return sb.String()
 }
 
+func newUInt642D(width, height int) [][]uint64 {
+	a := make([][]uint64, height)
+	rows := make([]uint64, width*height)
+	for y := height - 1; y >= 0; y-- {
+		a[y] = rows[width*y : width*(y+1)]
+	}
+	return a
+}
+
 func newInt2D(width, height int) [][]int {
-	var a = make([][]int, height)
+	a := make([][]int, height)
 	rows := make([]int, width*height)
 	for y := height - 1; y >= 0; y-- {
 		a[y] = rows[width*y : width*(y+1)]
@@ -96,9 +134,55 @@ func newInt2D(width, height int) [][]int {
 
 func newNode() *node {
 	n := &node{}
-	n.heights = make([]int, boardWidth)
+	n.ys = make([]int, boardWidth)
 	n.board = newInt2D(boardWidth, boardHeight)
+	n.reset()
 	return n
+}
+
+func (n *node) reset() {
+	n.hash = 0
+	n.heuristic = 0
+	maxHeight := boardHeight - 1
+	for x := boardWidth - 1; x >= 0; x-- {
+		n.ys[x] = maxHeight
+	}
+	for y := maxHeight; y >= 0; y-- {
+		row := n.board[y]
+		for x := boardWidth - 1; x >= 0; x-- {
+			row[x] = cellEmpty
+		}
+	}
+}
+
+func (n *node) isValidMove(x int) bool {
+	return x >= 0 && x < boardWidth && n.ys[x] >= 0
+}
+
+func (n *node) makeMove(x, cell int) {
+	y := n.ys[x]
+	n.ys[x]--
+	n.board[y][x] = cell
+	if cell == cellBlack {
+		n.heuristic += waysToWin[y][x]
+		n.hash ^= randomBits[0][y][x]
+	} else {
+		n.heuristic -= waysToWin[y][x]
+		n.hash ^= randomBits[1][y][x]
+	}
+}
+
+func (n *node) undoMove(x, cell int) {
+	n.ys[x]++
+	y := n.ys[x]
+	n.board[y][x] = cellEmpty
+	if cell == cellBlack {
+		n.heuristic -= waysToWin[y][x]
+		n.hash ^= randomBits[0][y][x]
+	} else {
+		n.heuristic += waysToWin[y][x]
+		n.hash ^= randomBits[1][y][x]
+	}
 }
 
 func printWaysToWin() {
@@ -111,5 +195,5 @@ func printWaysToWin() {
 }
 
 func main() {
-	printWaysToWin()
+
 }
