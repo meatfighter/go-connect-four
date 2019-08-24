@@ -16,7 +16,51 @@ const (
 	cellEmpty = 0
 	cellBlack = 1
 	cellWhite = -1
+
+	ttExact      = 0
+	ttLowerBound = 1
+	ttUpperBound = 2
+
+	nodeIntermediate = 0
+	nodeBlackWins    = 1
+	nodeWhiteWins    = 2
+	nodeDraw         = 3
+
+	infinity = 0x7FFFFFFF
 )
+
+var evaluationOrders = func() [][]int {
+	middle := boardWidth >> 1
+	orders := newInt2D(boardWidth, 1<<uint(middle))
+	for i := len(orders) - 1; i >= 0; i-- {
+		order := orders[i]
+		var max int
+		if (middle & 1) == 1 {
+			order[boardWidth-1] = middle
+			max = boardWidth - 1
+		} else {
+			max = boardWidth
+		}
+		b := i
+		for j, k := 0, 0; j < max; j, k = j+2, k+1 {
+			if (b & 1) == 0 {
+				order[j] = k
+				order[j+1] = boardWidth - 1 - k
+			} else {
+				order[j+1] = k
+				order[j] = boardWidth - 1 - k
+			}
+			b >>= 1
+		}
+	}
+	return orders
+}()
+
+func printEvaluationOrders() {
+	for i := len(evaluationOrders) - 1; i >= 0; i-- {
+		fmt.Println(evaluationOrders[i])
+	}
+}
 
 var randomBits = func() [][][]uint64 {
 	a := [][][]uint64{newUInt642D(boardWidth, boardHeight), newUInt642D(boardWidth, boardHeight)}
@@ -50,6 +94,15 @@ var waysToWin = func() [][]int {
 	return w
 }()
 
+func printWaysToWin() {
+	for y := 0; y < boardHeight; y++ {
+		for x := 0; x < boardWidth; x++ {
+			fmt.Printf("%02d ", waysToWin[y][x])
+		}
+		fmt.Println()
+	}
+}
+
 func computeWaysToWin(w [][]int, x, y int) int {
 	return computeWaysToWinWithDeltas(w, x, y, 1, 0) +
 		computeWaysToWinWithDeltas(w, x, y, 0, 1) +
@@ -81,6 +134,7 @@ type node struct {
 	ys        []int
 	hash      uint64
 	heuristic int
+	nodeType  int
 }
 
 func (n *node) print() {
@@ -143,6 +197,7 @@ func newNode() *node {
 func (n *node) reset() {
 	n.hash = 0
 	n.heuristic = 0
+	n.nodeType = nodeIntermediate
 	maxHeight := boardHeight - 1
 	for x := boardWidth - 1; x >= 0; x-- {
 		n.ys[x] = maxHeight
@@ -159,8 +214,14 @@ func (n *node) isValidMove(x int) bool {
 	return x >= 0 && x < boardWidth && n.ys[x] >= 0
 }
 
+// Capture nodeType before making move
 func (n *node) makeMove(x, cell int) {
+
 	y := n.ys[x]
+	if y < 0 {
+		return
+	}
+
 	n.ys[x]--
 	n.board[y][x] = cell
 	if cell == cellBlack {
@@ -170,9 +231,92 @@ func (n *node) makeMove(x, cell int) {
 		n.heuristic -= waysToWin[y][x]
 		n.hash ^= randomBits[1][y][x]
 	}
+
+	var winner int
+	if cell == cellBlack {
+		winner = nodeBlackWins
+	} else {
+		winner = nodeWhiteWins
+	}
+
+	// Scan row for win
+	row := n.board[y]
+	p := x + 1
+	for p < boardWidth && row[p] == cell {
+		p++
+	}
+	q := x - 1
+	for q >= 0 && row[q] == cell {
+		q--
+	}
+	if p-q-1 >= 4 {
+		n.nodeType = winner
+		return
+	}
+
+	// Scan column for win
+	p = y + 1
+	for p < boardHeight && n.board[p][x] == cell {
+		p++
+	}
+	q = y - 1
+	for q >= 0 && n.board[q][x] == cell {
+		q--
+	}
+	if p-q-1 >= 4 {
+		n.nodeType = winner
+		return
+	}
+
+	// Scan positive diagonal for win
+	px := x + 1
+	py := y + 1
+	for px < boardWidth && py < boardHeight && n.board[py][px] == cell {
+		px++
+		py++
+	}
+	qx := x - 1
+	qy := y - 1
+	for qx >= 0 && qy >= 0 && n.board[qy][qx] == cell {
+		qx--
+		qy--
+	}
+	if px-qx-1 >= 4 {
+		n.nodeType = winner
+		return
+	}
+
+	// Scan negative diagonal for win
+	px = x + 1
+	py = y - 1
+	for px < boardWidth && py >= 0 && n.board[py][px] == cell {
+		px++
+		py--
+	}
+	qx = x - 1
+	qy = y + 1
+	for qx >= 0 && qy < boardHeight && n.board[qy][qx] == cell {
+		qx--
+		qy++
+	}
+	if px-qx-1 >= 4 {
+		n.nodeType = winner
+		return
+	}
+
+	// Scan for draw
+	for i := boardWidth - 1; i >= 0; i-- {
+		if n.ys[i] >= 0 {
+			n.nodeType = nodeIntermediate
+			return
+		}
+	}
+	n.nodeType = nodeDraw
 }
 
-func (n *node) undoMove(x, cell int) {
+// nodeType is type of node before move was made
+func (n *node) undoMove(x, cell, nodeType int) {
+	n.nodeType = nodeType
 	n.ys[x]++
 	y := n.ys[x]
 	n.board[y][x] = cellEmpty
@@ -185,15 +329,118 @@ func (n *node) undoMove(x, cell int) {
 	}
 }
 
-func printWaysToWin() {
-	for y := 0; y < boardHeight; y++ {
-		for x := 0; x < boardWidth; x++ {
-			fmt.Printf("%02d ", waysToWin[y][x])
-		}
-		fmt.Println()
+func createTTElement(flag, depth, value int) int32 {
+	return int32((value << 8) | (depth << 2) | flag)
+}
+
+func extractTTValue(ttElement int32) int {
+	return int(ttElement) >> 8
+}
+
+func extractTTDepth(ttElement int32) int {
+	return (int(ttElement) >> 2) & 0x3F
+}
+
+func extractTTFlag(ttElement int32) int {
+	return int(ttElement) & 0x03
+}
+
+func (n *node) computeMove(depth, alpha, beta, color int) int {
+
+	move := -1
+	nodeType := n.nodeType
+	if depth == 0 || nodeType != nodeIntermediate {
+		return move
 	}
+
+	tt := make(map[uint64]int32)
+	order := evaluationOrders[rand.Int31n(int32(len(evaluationOrders)))]
+	value := -infinity
+	for i := len(order) - 1; i >= 0; i-- {
+		n.makeMove(order[i], color)
+		v := -n.negamax(depth-1, -beta, -alpha, -color, tt)
+		n.undoMove(order[i], color, nodeType)
+		if v > value {
+			value = v
+			move = order[i]
+		}
+		if value > alpha {
+			alpha = value
+		}
+		if alpha >= beta {
+			break
+		}
+	}
+	return move
+}
+
+func (n *node) negamax(depth, alpha, beta, color int, tt map[uint64]int32) int {
+	alphaOrig := alpha
+
+	ttEntry, ttValidEntry := tt[n.hash]
+	if ttValidEntry {
+		ttEntryValue := extractTTValue(ttEntry)
+		if extractTTDepth(ttEntry) >= depth {
+			switch extractTTFlag(ttEntry) {
+			case ttExact:
+				return ttEntryValue
+			case ttLowerBound:
+				if ttEntryValue > alpha {
+					alpha = ttEntryValue
+				}
+			case ttUpperBound:
+				if ttEntryValue < beta {
+					beta = ttEntryValue
+				}
+			}
+		}
+		if alpha >= beta {
+			return ttEntryValue
+		}
+	}
+
+	nodeType := n.nodeType
+	if depth == 0 || nodeType != nodeIntermediate {
+		value := n.heuristic
+		if nodeType == nodeBlackWins {
+			value += (depth + 1) << 12
+		} else if nodeType == nodeWhiteWins {
+			value -= (depth + 1) << 12
+		}
+		return color * value
+	}
+
+	order := evaluationOrders[rand.Int31n(int32(len(evaluationOrders)))]
+	value := -infinity
+	for i := len(order) - 1; i >= 0; i-- {
+		n.makeMove(order[i], color)
+		v := -n.negamax(depth-1, -beta, -alpha, -color, tt)
+		n.undoMove(order[i], color, nodeType)
+		if v > value {
+			value = v
+		}
+		if value > alpha {
+			alpha = value
+		}
+		if alpha >= beta {
+			break
+		}
+	}
+
+	var ttFlag int
+	if value <= alphaOrig {
+		ttFlag = ttUpperBound
+	} else if value >= beta {
+		ttFlag = ttLowerBound
+	} else {
+		ttFlag = ttExact
+	}
+	tt[n.hash] = createTTElement(ttFlag, depth, value)
+
+	return value
 }
 
 func main() {
-
+	n := newNode()
+	fmt.Println(n.computeMove(3, -infinity, infinity, cellBlack))
 }
