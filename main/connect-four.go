@@ -4,8 +4,11 @@ package main
 // go install github.com/meatfighter/go-connect-four/main
 
 import (
+	"bufio"
 	"fmt"
 	"math/rand"
+	"os"
+	"strconv"
 	"strings"
 )
 
@@ -357,18 +360,21 @@ func (n *node) computeMove(depth, alpha, beta, color int) int {
 	order := evaluationOrders[rand.Int31n(int32(len(evaluationOrders)))]
 	value := -infinity
 	for i := len(order) - 1; i >= 0; i-- {
-		n.makeMove(order[i], color)
-		v := -n.negamax(depth-1, -beta, -alpha, -color, tt)
-		n.undoMove(order[i], color, nodeType)
-		if v > value {
-			value = v
-			move = order[i]
-		}
-		if value > alpha {
-			alpha = value
-		}
-		if alpha >= beta {
-			break
+		m := order[i]
+		if n.ys[m] >= 0 {
+			n.makeMove(m, color)
+			v := -n.negamax(depth-1, -beta, -alpha, -color, tt)
+			n.undoMove(m, color, nodeType)
+			if v > value {
+				value = v
+				move = m
+			}
+			if value > alpha {
+				alpha = value
+			}
+			if alpha >= beta {
+				break
+			}
 		}
 	}
 	return move
@@ -413,17 +419,20 @@ func (n *node) negamax(depth, alpha, beta, color int, tt map[uint64]int32) int {
 	order := evaluationOrders[rand.Int31n(int32(len(evaluationOrders)))]
 	value := -infinity
 	for i := len(order) - 1; i >= 0; i-- {
-		n.makeMove(order[i], color)
-		v := -n.negamax(depth-1, -beta, -alpha, -color, tt)
-		n.undoMove(order[i], color, nodeType)
-		if v > value {
-			value = v
-		}
-		if value > alpha {
-			alpha = value
-		}
-		if alpha >= beta {
-			break
+		move := order[i]
+		if n.ys[move] >= 0 {
+			n.makeMove(move, color)
+			v := -n.negamax(depth-1, -beta, -alpha, -color, tt)
+			n.undoMove(move, color, nodeType)
+			if v > value {
+				value = v
+			}
+			if value > alpha {
+				alpha = value
+			}
+			if alpha >= beta {
+				break
+			}
 		}
 	}
 
@@ -440,7 +449,82 @@ func (n *node) negamax(depth, alpha, beta, color int, tt map[uint64]int32) int {
 	return value
 }
 
+func prompt(reader *bufio.Reader, message string) string {
+	fmt.Print(message)
+	text, _ := reader.ReadString('\n')
+	fmt.Println()
+	return strings.TrimSpace(text)
+}
+
+func promptForValue(reader *bufio.Reader, message string) int {
+	for {
+		value, err := strconv.Atoi(prompt(reader, message))
+		if err == nil {
+			return value
+		}
+	}
+}
+
+func promptForValueWithDefault(reader *bufio.Reader, message string, defaultValue int) int {
+	for {
+		value, err := strconv.Atoi(prompt(reader, message))
+		if err == nil {
+			return value
+		}
+		return defaultValue
+	}
+}
+
 func main() {
+	fmt.Println()
+	fmt.Println("Connect Four: Human vs. Computer")
+	fmt.Println()
+
+	reader := bufio.NewReader(os.Stdin)
+	maxDepth := 0
+	for maxDepth < 4 || maxDepth > 20 {
+		maxDepth = promptForValueWithDefault(reader, "Enter max search depth (4--20) [10]: ", 10)
+	}
+
 	n := newNode()
-	fmt.Println(n.computeMove(3, -infinity, infinity, cellBlack))
+	var color int
+	if (rand.Int() & 1) == 0 {
+		color = cellBlack
+		fmt.Println("Human (X) plays first.")
+	} else {
+		color = cellWhite
+		fmt.Println("Computer (O) plays first.")
+	}
+
+	fmt.Println()
+	n.print()
+
+	for n.nodeType == nodeIntermediate {
+		var move int
+		if color == cellBlack {
+			move = promptForValue(reader, "Enter column: ") - 1
+		} else {
+			move = n.computeMove(maxDepth, -infinity, infinity, color)
+			fmt.Printf("Computer drops O into column %d.\n", move+1)
+			fmt.Println()
+		}
+		if n.isValidMove(move) {
+			n.makeMove(move, color)
+			color = -color
+		} else {
+			fmt.Println("Invalid column.")
+			fmt.Println()
+		}
+
+		n.print()
+	}
+
+	switch n.nodeType {
+	case nodeBlackWins:
+		fmt.Println("Human wins.")
+	case nodeWhiteWins:
+		fmt.Println("Computer wins.")
+	case nodeDraw:
+		fmt.Println("Draw.")
+	}
 }
