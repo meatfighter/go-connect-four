@@ -1,8 +1,5 @@
 package main
 
-// TODO REMOVE:
-// go install github.com/meatfighter/go-connect-four/main
-
 import (
 	"bufio"
 	"fmt"
@@ -10,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 const (
@@ -405,6 +403,18 @@ func (n *node) negamax(depth, alpha, beta, color int, tt map[uint64]int32) int {
 		}
 	}
 
+	if depth == 0 {
+		columnsRemaining := 0
+		for x := boardWidth - 1; x >= 0 && columnsRemaining < 2; x-- {
+			if n.ys[x] >= 0 {
+				columnsRemaining++
+			}
+		}
+		if columnsRemaining == 1 {
+			depth = 1
+		}
+	}
+
 	nodeType := n.nodeType
 	if depth == 0 || nodeType != nodeIntermediate {
 		value := n.heuristic
@@ -476,6 +486,7 @@ func promptForValueWithDefault(reader *bufio.Reader, message string, defaultValu
 }
 
 func main() {
+
 	fmt.Println()
 	fmt.Println("Connect Four: Human vs. Computer")
 	fmt.Println()
@@ -486,45 +497,58 @@ func main() {
 		maxDepth = promptForValueWithDefault(reader, "Enter max search depth (4--20) [10]: ", 10)
 	}
 
-	n := newNode()
-	var color int
-	if (rand.Int() & 1) == 0 {
-		color = cellBlack
-		fmt.Println("Human (X) plays first.")
-	} else {
-		color = cellWhite
-		fmt.Println("Computer (O) plays first.")
-	}
-
-	fmt.Println()
-	n.print()
-
-	for n.nodeType == nodeIntermediate {
-		var move int
-		if color == cellBlack {
-			move = promptForValue(reader, "Enter column: ") - 1
+	for {
+		n := newNode()
+		var color int
+		if (rand.Int() & 1) == 0 {
+			color = cellBlack
+			fmt.Println("Human (X) plays first.")
 		} else {
-			move = n.computeMove(maxDepth, -infinity, infinity, color)
-			fmt.Printf("Computer drops O into column %d.\n", move+1)
-			fmt.Println()
-		}
-		if n.isValidMove(move) {
-			n.makeMove(move, color)
-			color = -color
-		} else {
-			fmt.Println("Invalid column.")
-			fmt.Println()
+			color = cellWhite
+			fmt.Println("Computer (O) plays first.")
 		}
 
+		fmt.Println()
 		n.print()
+
+		for n.nodeType == nodeIntermediate {
+			var move int
+			if color == cellBlack {
+				move = promptForValue(reader, "Enter column: ") - 1
+			} else {
+				move = n.computeMove(maxDepth, -infinity, infinity, color)
+				fmt.Printf("Computer drops O into column %d.\n", move+1)
+				fmt.Println()
+			}
+			if n.isValidMove(move) {
+				n.makeMove(move, color)
+				color = -color
+			} else {
+				fmt.Println("Invalid column.")
+				fmt.Println()
+			}
+
+			n.print()
+		}
+
+		switch n.nodeType {
+		case nodeBlackWins:
+			fmt.Println("Human wins.")
+		case nodeWhiteWins:
+			fmt.Println("Computer wins.")
+		case nodeDraw:
+			fmt.Println("Draw.")
+		}
+		fmt.Println()
+
+		s := prompt(reader, "Play again (y/n)? ")
+		if len(s) == 0 || unicode.ToLower(rune(s[0])) != 'y' {
+			break
+		}
 	}
 
-	switch n.nodeType {
-	case nodeBlackWins:
-		fmt.Println("Human wins.")
-	case nodeWhiteWins:
-		fmt.Println("Computer wins.")
-	case nodeDraw:
-		fmt.Println("Draw.")
-	}
+	fmt.Println("Thanks for playing.")
+	fmt.Println()
+	fmt.Println("Goodbye.")
+	fmt.Println()
 }
