@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -375,6 +376,7 @@ func (n *node) computeMove(depth, alpha, beta, color int) int {
 			}
 		}
 	}
+
 	return move
 }
 
@@ -486,6 +488,8 @@ func promptForValueWithDefault(reader *bufio.Reader, message string, defaultValu
 }
 
 func main() {
+
+	rand.Seed(time.Now().UnixNano())
 
 	fmt.Println()
 	fmt.Println("Connect Four: Human vs. Computer")
