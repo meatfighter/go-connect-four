@@ -375,7 +375,7 @@ func (n *node) computeMove(depth, alpha, beta, color int) int {
 			}
 		}
 	}
-	fmt.Printf("tt size = %d\n", len(tt)) // TODO REMOVE
+
 	return move
 }
 
